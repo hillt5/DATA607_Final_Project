@@ -1,6 +1,580 @@
 ---
-title: "DATA 607 Final Project - "
+title: "DATA 607 Final Project - Drug Reviews Sentiment Analysis "
 author: "Thomas Hill"
 date: "5/1/2020"
 output: pdf_document
 ---
+
+# Introduction
+For this project, I'm going to use available datasets to help understand patient versus professional perceptions of drug therapy benefit and tolerability. Using patient reviews, I intend to determine the most common classes of prescription drugs, as well as their relative tolerability. These data are based off reviews from Drugs.com (.csv), complete with rating, a brief written review, as well as other user feedback - yes or no to how helpful a review was.  The bulk of my time will be spent performing a sentiment analysis of the drug reviews, looking for words associated with positive or negative opinion. 
+
+In addition to this, I'll be using the US Food and Drug Administration's API for adverse drug reactions (JSON) to offer a contrasting regulatory/ professional perspective. Based on this comparison, I hope to identify any discrepancies in reported tolerability versus firsthand patient experience.  My purpose in doing this is to enhance my own ability to warn about side effects, and identify any boundaries to successful drug therapy before they happen.
+
+Sources:
+
+Original Drugs.com paper:  http://kdd.cs.ksu.edu/Publications/Student/kallumadi2018aspect.pdf
+
+Kaggle / UC Irvine dataset:  https://www.kaggle.com/jessicali9530/kuc-hackathon-winter-2018
+
+FDA API website:  https://open.fda.gov/apis/drug/event/
+
+
+# Initial analysis
+
+
+## Uploading data
+
+I'll start by uploading the training set of the original data, which contains over 160,000 different drug reviews. I've specified some two rows, drug name and condition, as factors to better understand some of the most commonly reviewed medicines and diseases.
+
+```{r upload-pt-drug-reviews}
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+
+reviews_orig <- read_csv("https://raw.githubusercontent.com/hillt5/DATA607_Final_Project/master/drugsComTrain_raw.csv", col_types = "dffcdcd")
+reviews_orig$date <- as.Date(reviews_orig$date, format = "%d-%b-%y")
+
+
+head(reviews_orig)
+```
+
+
+I'll start by looking at the two variables defined as factors, drugName and condition. I've limited to looking at the top 25 factors for each.
+
+```{r summary-drug-name}
+num_obs <- nrow(reviews_orig)
+summary(reviews_orig$drugName, 25)
+(num_obs-126229)/num_obs
+
+```
+
+For drugs, it's evident that many of the commonly reviewed medications are progestins used for oral contraception (OC). Levonorgestrel is an emergency contraceptive and also the active ingredient in many different brands of OC. There are also several brand name contraceptives, like Implanon and Depo-Provera, which further complcicates definition of contraceptives as a drug class. The top 25 results also represent 21% of all reviews. Beyond contraceptives, phentermine and bupropion/naltrexone are used for weight loss, metronidazole is an antimicrobial, and many of the others are antidepressants.
+
+```{r summary-condition}
+
+summary(reviews_orig$condition, 25)
+(num_obs-61287)/num_obs
+```
+
+For conditions, the most common reason given is 'Birth Control', not surprising considering the most common medications.  The same medications can also be used for other top conditions, including migraine, acne, emergency contraception, and abnormal uterine bleeding.  There are also many psychiatric and neurological illnesses, including anxiety, insomnia, ADHD, and derpession. Chronic illnesses associated with aging, like high blood pressure and type 2 diabetes are also present. Finally, the top 25 conditions comprise just over 62% of the data, with 899 values missing - listed as "NA".
+
+Next, I'll correct a spelling error - 'ibromyalgia' is likely supposed to mean fibromyalgia, a neuropsychiatric syndrome characterized by chronic pain. I'll also recode some values as "NA" that I noticed while looking further into the dataset. Some of these are put as 'Not listed', while others appear to be coding errors where 'usefulCount' data was shifted into the condition column. I also scanned drug name for spelling errors and found no issues.
+
+```{r top-25-fixes}
+
+library(tidyr)
+
+reviews_edit <- reviews_orig
+
+reviews_edit$condition <- reviews_edit$condition %>%
+  recode_factor(ibromyalgia = "Fibromyalgia", atigue = "Fatigue") %>%
+  na_if("Not Listed / Othe")
+
+error_span <- str_detect(reviews_edit$condition, pattern = "</span>")
+reviews_edit$condition <- replace(reviews_edit$condition, list = error_span, NA)
+
+summary(reviews_edit$condition, 25)
+
+```
+
+## Building a drug class from reviews data
+
+For the next step of this analysis, I'll be subsetting the reviews data to offer the closest other medications.  The best way of doing this is by looking at the most common conditions and then look at what other medicines are used to manage them. I'll be defining four groups in the next section: medicines used for oral contraceptives, anxiety/depression, weight loss, and smoking cessation.
+
+### Contraception
+
+My goal for the contraceptive class is for it to contain all available pharmacological agents for contraception, including oral and implanted forms.  I will omit the use of emergency contraception, as this is typically one-time use at a much higher dose.  As mentioned earlier, I'll subset the reviews by 'Birth Control' condition to generate the shorter list of agents.
+
+```{r contraceptive-class}
+
+oc_reviews <- reviews_edit %>%
+  filter(condition == 'Birth Control')
+
+head(oc_reviews)
+n_oc_reviews <-nrow(oc_reviews)
+
+oc_reviews %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_oc_reviews),1)) %>%
+  arrange(desc(n))
+
+```
+
+This confirms my suspicions that many of the most common drugs were being used for birth control.  Several observations jump out - the  highest ranked drug etonorgestrel is the generic name for the ingredient in Implanon and Explanon, so in all likelihood this is by far the most common contraceptive.  The same generic/brand relationship exists for levonorgestrel and Mirena, copper and ParaGard. Also, several oral contraceptives exist as combinations with a synthetic estrogen, or ethinyl estradiol.  
+
+Next, lets take an exciting first look at the favorability of contraceptives, based on the numeric rating.  
+
+```{r visualize-oc-ratings}
+library(ggplot2)
+
+ggplot(oc_reviews) +
+  geom_bar(aes(x = rating)) +
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Oral Contraceptives")
+
+```
+
+
+There appear to be many poorly rated birth control products, likely related to some sort of intolerable effect. I'll take a look at these reviews specifically, with rating of '1' out of ten.
+
+
+
+```{r visualize-oc-ratings-top10}
+oc_reviews_bad <- oc_reviews %>%
+  filter(rating == 1) %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_oc_reviews),1)) %>%
+  arrange(desc(n))
+
+oc_reviews_bad
+
+
+oc_reviews_popular <- oc_reviews %>%
+  filter(drugName == c('Etonogestrel', 'Ethinyl estradiol / norethindrone', 'Nexplanon', 'Ethinyl estradiol / norgestimate', 'Ethinyl estradiol / levonorgestrel'))
+  
+ggplot(oc_reviews_popular) +
+  geom_bar(aes(x = rating, fill = drugName)) +
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Top 5 Contraceptives")
+
+```
+
+The contraceptives associated with poor ratings appear to be the same as the most popular items. Graphically, I chose the top five and it appears that there are no major anomalies in the ratings.  Hopefully the sentiment analysis will pick up on patterns in the reviews that identify particularly negative experiences.  
+
+### Anxiety/ Depression
+
+There are several conditions that encompass symptoms of depression and anxiety, within the top 25 there were some partial hits including 'Insomnia', 'Anxiety and Stress', 'Panic Disorder', and "Major Depressive Disorder'. 
+
+```{r subset-ax-dep}
+
+ad_reviews <- reviews_edit %>%
+  filter(condition == c('Depression', 'Insomnia', 'Anxiety', 'Anxiety and Stress', 'Major Depressive Disorder', 'Panic Disorder'))
+
+ad_reviews %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_wl_reviews),1)) %>%
+  arrange(desc(n))
+
+```
+The most popular medications used for management of anxiety and depression make up a small percent of the overall category of drugs used to manage symptoms.  Lets look at the data more visually.
+
+```{r visual-ax-dep}
+ggplot(ad_reviews) +
+  geom_bar(aes(x = rating)) +
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Anxiety and Depression")
+
+ad_reviews_popular <- ad_reviews %>%
+  filter(drugName == c('Escitalopram', 'Sertraline', 'Citalopram', 'Bupropion', 'Fluoxetine'))
+  
+ggplot(ad_reviews_popular) +
+  geom_bar(aes(x = rating, fill = drugName)) +
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Top 5 Treatments for Anxiety or Depression")
+
+
+
+```
+
+The bar plot follows the overall pattern of relatively good marks, with an uptick in the lowest score. For these medications, it appears that there's no set pattern in the ratings, so I'll take a quick look at the differences in ratings of '1' versus '10'. 
+
+```{r ad-meds-ratings}
+
+n_ad_reviews <-nrow(ad_reviews)
+
+ad_reviews_bad <- ad_reviews %>%
+  filter(rating == 1) %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_ad_reviews),1)) %>%
+  arrange(desc(n))
+
+ad_reviews_bad
+
+ad_reviews_good <- ad_reviews %>%
+  filter(rating == 10) %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_ad_reviews),1)) %>%
+  arrange(desc(n))
+
+ad_reviews_good
+
+```
+
+Some especially badly rated medications include venlafaxine, buspirone, and Belsomra, while the highest rated include teh antidepressants escitalopram and bupropion, as well as the sedatives alprazolam (also Xanax) and clonazepam.  For one last look at the medications used for anxiety and depression, I'm going to omit 'insmonia', as this may be weighing the ratings too heavily in favor of sedatives.
+
+```{r ad-minus-insomnia}
+ad_reviews_wo_insomnia <- ad_reviews %>%
+  filter(condition != 'Insomnia')
+
+ad_reviews_wo_insomnia %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_wl_reviews),1)) %>%
+  arrange(desc(n))
+
+n_ad_reviews_wo_insomnia <-nrow(ad_reviews_wo_insomnia)
+
+ad_reviews_wo_insomnia_bad <- ad_reviews_wo_insomnia %>%
+  filter(rating == 1) %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_ad_reviews_wo_insomnia),1)) %>%
+  arrange(desc(n))
+
+ad_reviews_wo_insomnia_bad
+
+ad_reviews_wo_insomnia_good <- ad_reviews_wo_insomnia %>%
+  filter(rating == 10) %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_ad_reviews_wo_insomnia),1)) %>%
+  arrange(desc(n))
+
+ad_reviews_wo_insomnia_good
+
+
+
+
+```
+
+Removing insomnia did not change the highest ratings as expected.  I'm going to take one last look at ratings, this time looking at the favorability of sedatives only.
+
+```{r visual-sedatives-ax-dep}
+
+ad_reviews_edit <- ad_reviews
+
+ad_reviews_edit$drugName <- ad_reviews$drugName %>%
+  recode_factor('Klonopin' = 'Clonazepam', 'Xanax' = 'Alprazolam', 'Xanax XR' = 
+  'Alprazolam', 'Ambien' = 'Zolpidem', 'Ambien CR' = 'Zolpidem',  'Lunesta' = 'Eszopiclone', 'Ativan' = 'Lorazepam', 'Restoril'= 'Temazepam')
+
+
+
+ad_reviews_bzd <- ad_reviews %>%
+  filter(drugName == c('Clonazepam', 'Alprazolam', 'Zolpidem', 'Temazepam', 'Eszopiclone',  'Diazepam', 'Lorazepam', 'Oxazepam', 'Triazolam', 'Chlordiazepoxide'))
+  
+ggplot(ad_reviews_bzd) +
+  geom_bar(aes(x = rating, fill = drugName)) +
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings of Sedatives")
+
+
+```
+
+### Weight Loss
+
+I've grouped these two together as they're less complicated than defining the other two classes. Therapeutically, only a handful of medicines are used to manage these, and the conditions are relatively straightforward.
+
+
+```{r subset-weight-loss}
+
+wl_reviews <- reviews_edit %>%
+  filter(condition == 'Weight Loss')
+
+
+n_wl_reviews <-nrow(wl_reviews)
+head(wl_reviews)
+
+wl_reviews %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_wl_reviews),1)) %>%
+  arrange(desc(n))
+
+```
+
+Looking at the initial data, one non-intuitive finding is the addition of the medication megestrol, which is used in illnesses like cancer and AIDS when patients lose weight.  So in this case, it is being used for 'weight loss', but to gain weight and not lose it.  I will take the extra step of removing these reviews.
+
+```{r wl-gb-recode}
+
+wl_reviews_edit <- wl_reviews
+
+
+#Recode brand to generic
+wl_reviews_edit$drugName <- recode_factor(wl_reviews$drugName, 'Megace' = 'Megestrol', 'Megace ES' = 'Megestrol', 'Megestrol' = 'Megestrol')
+
+#Remove medication not used for weight loss
+
+wl_reviews_edit <- wl_reviews_edit%>%
+  filter(drugName != 'Megestrol')
+
+n_wl_reviews <- nrow(wl_reviews_edit)
+         
+
+#Recode the rest, set default generic to phentermine
+wl_reviews_edit$drugName <- wl_reviews_edit$drugName %>%
+  recode_factor(Belviq = "Locaserin", "Belviq XR" = "Locaserin", Locaserin = "Locaserin", Contrave = "Bupropion / naltrexone", "Bupropion / naltrexone" = "Bupropion / naltrexone", Qsymia = "Phentermine/ topiramate", "Phentermine/ topiramate" = "Phentermine/ topiramate", Saxenda = "Liraglutide",Victoza = "Liraglutide", Liraglutide = "Liraglutide", .default = "Phentermine")
+
+wl_reviews_edit %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_wl_reviews),1)) %>%
+  arrange(desc(n))
+
+```
+
+```{r visualize-wl-ratings}
+library(ggplot2)
+
+ggplot(wl_reviews_edit) +
+  geom_bar(aes(x = rating, fill = drugName)) +
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Weight Loss")
+
+ggplot(wl_reviews_edit) +
+  geom_bar(aes(x = rating)) +
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Weight Loss") + 
+  facet_wrap(~drugName)
+
+```
+
+```{r visualize-wl-popularity}
+library(ggplot2)
+library(lubridate)
+
+wl_yrly_reviews <- wl_reviews_edit %>%
+  mutate(year = year(date)) %>%
+  group_by(drugName, year) %>%
+  count()
+
+wl_yrly_reviews
+
+ggplot(wl_yrly_reviews) +
+  geom_line(aes(x = year, y = n, color = drugName)) +
+  labs(title = "Number of ratings for weight loss products over time", x = "Year", y = "Number of Reviews", color = "Drug Name")
+
+```
+
+### Smoking Cessation
+
+
+```{r subset-smoking-cessation}
+
+cs_reviews <- reviews_edit %>%
+  filter(condition == 'Smoking Cessation')
+
+n_cs_reviews <-nrow(cs_reviews)
+head(cs_reviews)
+
+cs_reviews %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_cs_reviews),1)) %>%
+  arrange(desc(n))
+
+```
+
+
+
+Smoking cessation products are much less numerous, so generic-brand duplication will have a significant impact. I will be recoding drugName to generic before visualizing ratings.
+
+```{r cs-gb-recode}
+
+cs_reviews_edit <- cs_reviews
+
+cs_reviews_edit$drugName <- cs_reviews$drugName %>%
+  recode_factor(Chantix = "Varenicline", Varenicline = "Varenicline", Bupropion = "Bupropion",  Buproban = "Bupropion", Zyban = "Bupropion", Nortriptyline = "Nortriptyline", Pamelor = "Nortriptyline", Topiramate = "Topiramate", Topamax = "Topiramate", .default = "Nicotine")
+
+cs_reviews_edit %>%
+  group_by(drugName) %>%
+  count() %>%
+  mutate(pct_reviews = round((100*n/n_cs_reviews),1)) %>%
+  arrange(desc(n))
+
+```
+
+```{r visualize-cs-ratings}
+library(ggplot2)
+
+ggplot(cs_reviews_edit) +
+  geom_bar(aes(x = rating, fill = drugName)) +
+  labs(x = "Rating (out of 10)", y = "Number of ratings, log scale", title = "Ratings for Smoking Cessation") +
+  scale_x_discrete(breaks = 10)
+
+```
+
+
+```{r visualize-cs-popularity}
+library(ggplot2)
+library(lubridate)
+
+cs_yrly_reviews <- cs_reviews_edit %>%
+  mutate(year = year(date)) %>%
+  group_by(drugName, year) %>%
+  count()
+
+cs_yrly_reviews
+
+ggplot(cs_yrly_reviews) +
+  geom_line(aes(x = year, y = n, color = drugName)) +
+  labs(title = "Number of ratings for smoking cessation products over time", x = "Year", y = "Number of Reviews", color = "Drug Name")
+
+```
+
+
+## Sentiment Analysis of Selected Medications
+
+For this sentiment analysis, I'll be using the three lexicons used in a previous in addition to the GI set of dictionaries. These dictionaries include some additional categorization based on opinion, pleasure and pain, motivation and goals.  
+
+```{r get-libs}
+
+library(textdata)
+library(tidytext)
+library(lexicon)
+library(wordcloud)
+
+sentiword <- hash_sentiment_sentiword
+
+names(sentiword)[names(sentiword) == "x"] <- "word"
+names(sentiword)[names(sentiword) == "y"] <- "score"
+
+
+get_sentiments("afinn")
+get_sentiments("bing")
+get_sentiments("nrc")
+```
+
+### Contraception
+
+```{r oc-negative-reviews-word-cloud}
+
+nrc_anger <- get_sentiments("nrc") %>%
+  filter(sentiment == 'anger')
+
+tidy_oc_reviews <- oc_reviews %>%
+  unnest_tokens(word, review)
+
+library(wordcloud)
+
+custom_stop_words <- bind_rows(tibble(word = c('bad', 'awful', 'horrible', 'terrible', 'feeling', 'lose'), 
+                                          lexicon = c("custom")), 
+                               stop_words)
+
+tidy_oc_reviews %>%
+  filter(rating == 1) %>%
+  anti_join(custom_stop_words) %>% 
+  inner_join(nrc_anger) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 75))
+
+```
+
+
+#Treatments for depression and anxiety
+
+
+```{r ad-negative-reviews-word-cloud}
+
+nrc_pos <- get_sentiments("nrc") %>%
+  filter(sentiment == 'positive')
+
+nrc_neg <- get_sentiments("nrc") %>%
+  filter(sentiment == 'negative')
+
+tidy_ad_reviews <- ad_reviews %>%
+  unnest_tokens(word, review)
+
+library(wordcloud)
+
+custom_stop_words_ad <- bind_rows(tibble(word = c('bad', 'awful', 'horrible', 'terrible', 'anxiety', 'depression', 'taking', 'pill', 'effect', 'feeling', 'lose', 'anxious', 'panic', 'disorder', 'medication', 'medicine'), 
+                                          lexicon = c("custom")), 
+                               stop_words)
+
+tidy_ad_reviews %>%
+  filter(rating == 10, condition != 'Insomnia') %>%
+  anti_join(custom_stop_words_ad) %>% 
+  inner_join(nrc_pos) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 75))
+
+tidy_ad_reviews %>%
+  filter(rating == 1) %>%
+  anti_join(custom_stop_words_ad) %>% 
+  inner_join(nrc_neg) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 75))
+```
+
+### Weight Loss and Smoking Cessation
+
+One medication each for weight loss and smoking cessation encompassed the vast majority of reviews: varenicline (Chantix) for smoking cessation and phentermine (Adipex-P) for weight loss. I'm going to take an overall look at the word frequency of their reviews, as well as identify any reasons why they are so popular.
+
+
+
+```{r cs-word-freuency}
+tidy_cs_reviews <- cs_reviews_edit %>%
+  unnest_tokens(word, review)
+
+library(wordcloud)
+
+custom_stop_words_cs <- bind_rows(tibble(word = c('bad', 'awful', 'horrible', 'terrible', 'taking', 'pill', 'effect', 'feeling', 'haven', 'medication', 'nicotine', 'quit', 'don', 'recommend', 'medicine'), 
+                                          lexicon = c("custom")), 
+                               stop_words)
+
+
+tidy_cs_reviews %>%
+  filter(rating == 10, drugName == 'Varenicline') %>%
+  anti_join(custom_stop_words_cs) %>% 
+  inner_join(nrc_pos) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 75))
+
+tidy_cs_reviews %>%
+  filter(rating == 1, drugName == 'Varenicline') %>%
+  anti_join(custom_stop_words_cs) %>% 
+  inner_join(nrc_neg) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 75))
+```
+
+
+```{r wl-word-freuency}
+library(tm)
+
+tidy_wl_reviews <- wl_reviews_edit %>%
+  unnest_tokens(word, review)
+
+
+custom_stop_words_wl <- bind_rows(tibble(word = c('bad', 'awful', 'horrible', 'terrible', 'taking', 'pill', 'effect', 'feeling', 'medication', 'day', 'weight', 'lose', 'lost', 'nicotine', 'quit', 'haven', 'don', 'recommend', 'medicine'), 
+                                          lexicon = c("custom")), 
+                               stop_words)
+
+
+tidy_wl_reviews %>%
+  filter(rating == 10, drugName == 'Phentermine') %>%
+  anti_join(custom_stop_words_wl) %>% 
+  inner_join(sentiword) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 75))
+
+tidy_wl_reviews %>%
+  filter(rating == 1, drugName == 'Phentermine') %>%
+  anti_join(custom_stop_words_wl) %>% 
+  inner_join(nrc_neg) %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 75))
+
+findAssocs(wl_reviews_edit, term = 'dry', cor = 0.3)
+```
+
+
+```{r word-assocs}
+wl_reviews_doc <- Corpus(VectorSource(wl_reviews_edit))
+wl_reviews_doc_clean<- wl_reviews_doc %>%
+  tm_map(removeNumbers) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(removeWords, stopwords("english")) %>%
+  tm_map( toSpace, "/") %>%
+  tm_map(stripWhitespace)
+wl_reviews_dtm <- TermDocumentMatrix(wl_reviews_doc_clean)
+findAssocs(wl_reviews_dtm, terms = "dry", corlimit = 0.3)
+
+wl_m <- as.matrix(wl_reviews_dtm)
+wl_v <- sort(rowSums(wl_m),decreasing=TRUE)
+wl_doc_df <- data.frame(word = names(wl_v),freq=wl_v)
+
+library(RColorBrewer)
+set.seed(1234)
+wordcloud(words = wl_doc_df$word, freq = wl_doc_df$freq, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+
+```
