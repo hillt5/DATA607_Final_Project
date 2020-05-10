@@ -3,7 +3,11 @@ title: "DATA 607 Final Project - Drug Reviews Sentiment Analysis and Safety Prof
 author: "Thomas Hill"
 date: "5/10/2020"
 output: html_document
+theme: readable
 ---
+
+# __Disclaimer__
+__This project is done for academic purposes and my own personal interest, and does not reflect my professional opinon about any of the medications or conditions discussed.__
 
 # Introduction
 
@@ -85,6 +89,25 @@ summary(reviews_edit$condition, 25) #First 25 entries
 
 ```
 
+
+```{r time-of-reviews}
+
+yrly_reviews <- reviews_edit %>%
+  mutate(year = year(date)) %>% #Find year of review
+  group_by(year) %>% #Group by drug, date of review
+  count()
+
+
+ggplot(yrly_reviews) +
+  geom_line(aes(x = year, y = n)) +
+  geom_point(aes(x = year, y = n)) +
+  labs(title = "Number of reviews over time", x = "Year", y = "Number of Reviews") + #Change in reviews over time
+  scale_x_continuous(breaks = c(2008, 2010, 2012, 2014, 2016))
+
+```
+
+Reviews over time significantly increased from 2014 to 2016.
+
 ## Building a Drug Class from Reviews Data
 
 For the next step of this analysis, I'll be subsetting the reviews data to offer the closest other medications.  The best way of doing this is by looking at the most common conditions and then look at what other medicines are used to manage them. I'll be defining four groups in the next section: medicines used for oral contraceptives, anxiety/depression, weight loss, and smoking cessation.
@@ -116,8 +139,9 @@ Next, lets take an exciting first look at the favorability of contraceptives, ba
 ```{r visualize-oc-ratings}
 
 ggplot(oc_reviews) +
-  geom_bar(aes(x = rating)) +
-  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Oral Contraceptives")
+  geom_bar(aes(x = rating), fill = "#042f66")+
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Oral Contraceptives") +
+  scale_x_continuous(breaks = c(1:10))
 
 ```
 
@@ -145,8 +169,10 @@ oc_reviews_popular <- oc_reviews %>%
   filter(drugName == c('Etonogestrel', 'Ethinyl estradiol / norethindrone', 'Nexplanon', 'Ethinyl estradiol / norgestimate', 'Ethinyl estradiol / levonorgestrel'))
   
 ggplot(oc_reviews_popular) +
-  geom_bar(aes(x = rating, fill = drugName)) +
-  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Top 5 Contraceptives")
+  geom_bar(aes(x = rating, fill = drugName))+
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Top 5 Contraceptives") +
+  scale_fill_viridis_d() +
+  scale_x_continuous(breaks = c(1:10))
 
 ```
 
@@ -176,7 +202,7 @@ The most popular medications used for management of anxiety and depression make 
 ```{r visual-ax-dep}
 
 ggplot(ad_reviews) +
-  geom_bar(aes(x = rating)) +
+  geom_bar(aes(x = rating), fill= "#042f66") +
   labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Anxiety and Depression")
 ```
 
@@ -187,7 +213,9 @@ ad_reviews_popular <- ad_reviews %>%
   
 ggplot(ad_reviews_popular) +
   geom_bar(aes(x = rating, fill = drugName)) +
-  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Top 5 Treatments for Anxiety or Depression")
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Top 5 Treatments for Anxiety or Depression") +
+  scale_fill_viridis_d() +
+  scale_x_continuous(breaks = c(1:10))
 
 ```
 
@@ -266,10 +294,12 @@ ad_reviews_edit$drugName <- ad_reviews$drugName %>%
 
 ad_reviews_bzd <- ad_reviews %>%
   filter(drugName == c('Clonazepam', 'Alprazolam', 'Zolpidem', 'Temazepam', 'Eszopiclone',  'Diazepam', 'Lorazepam', 'Oxazepam', 'Triazolam', 'Chlordiazepoxide'))
-  
+
 ggplot(ad_reviews_bzd) +
   geom_bar(aes(x = rating, fill = drugName)) +
-  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings of Sedatives")
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings of Sedatives", fill = "Drug") +
+  scale_fill_viridis_d() +
+  scale_x_continuous(breaks = c(1:10))
 
 ```
 
@@ -329,13 +359,15 @@ wl_reviews_edit %>%
 
 ggplot(wl_reviews_edit) +
   geom_bar(aes(x = rating, fill = drugName)) +
-  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Weight Loss")
+  labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Weight Loss") +
+  scale_fill_viridis_d() +
+  scale_x_continuous(breaks = c(1:10))
 
 ggplot(wl_reviews_edit) +
   geom_bar(aes(x = rating)) +
   labs(x = "Rating (out of 10)", y = "Number of ratings", title = "Ratings for Weight Loss") + 
-  facet_wrap(~drugName) #For each separate drug
-
+  facet_wrap(~drugName) + #For each separate drug 
+  scale_x_continuous(breaks = c(1:10))
 ```
 
 ```{r visualize-wl-popularity}
@@ -345,10 +377,12 @@ wl_yrly_reviews <- wl_reviews_edit %>%
   group_by(drugName, year) %>% #Group by drug, date of review
   count()
 
+
 ggplot(wl_yrly_reviews) +
   geom_line(aes(x = year, y = n, color = drugName)) +
-  labs(title = "Number of ratings for weight loss products over time", x = "Year", y = "Number of Reviews", color = "Drug Name") #Change in reviews over time
-
+  geom_point(aes(x = year, y = n, color = drugName)) +
+  labs(title = "Number of ratings for weight loss products over time", x = "Year", y = "Number of Reviews", color = "Drug") + #Change in reviews over time
+  scale_x_continuous(breaks = c(2008, 2010, 2012, 2014, 2016))
 ```
 
 ### Smoking Cessation
@@ -397,7 +431,8 @@ cs_reviews_edit %>%
 ggplot(cs_reviews_edit) +
   geom_bar(aes(x = rating, fill = drugName)) +
   labs(x = "Rating (out of 10)", y = "Number of ratings, log scale", title = "Ratings for Smoking Cessation") +
-  scale_x_discrete(breaks = 10)
+  scale_x_discrete(breaks = 10) +
+  scale_fill_viridis_d()
 
 ```
 
@@ -412,7 +447,9 @@ cs_yrly_reviews <- cs_reviews_edit %>%
 
 ggplot(cs_yrly_reviews) +
   geom_line(aes(x = year, y = n, color = drugName)) +
-  labs(title = "Number of ratings for smoking cessation products over time", x = "Year", y = "Number of Reviews", color = "Drug Name")
+  geom_point(aes(x = year, y = n, color = drugName)) +
+  labs(title = "Number of ratings for smoking cessation products over time", x = "Year", y = "Number of Reviews", color = "Drug") +
+  scale_x_continuous(breaks = c(2008, 2010, 2012, 2014, 2016))
 
 ```
 
@@ -452,6 +489,8 @@ tidy_oc_reviews <- oc_reviews %>%
   unnest_tokens(word, review)
 
 library(wordcloud)
+library(viridisLite)
+color_pal <- viridis(n = 9, direction = -1)
 
 custom_stop_words <- bind_rows(tibble(word = c('bad', 'awful', 'horrible', 'terrible', 'feeling', 'lose'), 
                                           lexicon = c("custom")), 
@@ -462,12 +501,14 @@ tidy_oc_reviews %>%
   anti_join(custom_stop_words) %>% 
   inner_join(nrc_anger) %>%
   count(word) %>%
-  with(wordcloud(word, n, max.words = 75))
+  with(wordcloud(word, n, colors = color_pal, max.words = 75))
 
 ```
 
+For the worst ratings, many of the findings endorse ongoing mental health issues, addition to irritability, pain, and the word shot - likely because many forms of birth control are given as an injection.
+ 
 
-#Treatments for depression and anxiety
+# Treatments for depression and anxiety
 
 
 ```{r ad-negative-reviews-word-cloud}
@@ -491,28 +532,28 @@ tidy_ad_reviews %>%
   anti_join(custom_stop_words_ad) %>% 
   inner_join(nrc_pos) %>%
   count(word) %>%
-  with(wordcloud(word, n, max.words = 75))
+  with(wordcloud(word, n, colors = color_pal, max.words = 75))
 
 tidy_ad_reviews %>%
   filter(rating == 1, condition != 'Insomnia') %>%
   anti_join(custom_stop_words_ad) %>% 
   inner_join(nrc_neg) %>%
   count(word) %>%
-  with(wordcloud(word, n, max.words = 75))
+  with(wordcloud(word, n, colors = color_pal, max.words = 75))
 ```
+
+The most notable finding in this word frequency is 'worse', which may indicate that the treatment is ineffective and people are not satisfied with the antidepressant's effects. Additionally, there are side effects like nausea, dizziness, and potential effects on weight.
 
 ### Weight Loss and Smoking Cessation
 
 One medication each for weight loss and smoking cessation encompassed the vast majority of reviews: varenicline (Chantix) for smoking cessation and phentermine (Adipex-P) for weight loss. I'm going to take an overall look at the word frequency of their reviews, as well as identify any reasons why they are so popular.
-
-
 
 ```{r cs-word-freuency}
 tidy_cs_reviews <- cs_reviews_edit %>%
   unnest_tokens(word, review)
 
 
-custom_stop_words_cs <- bind_rows(tibble(word = c('bad', 'awful', 'horrible', 'terrible', 'taking', 'pill', 'effect', 'feeling', 'haven', 'medication', 'nicotine', 'quit', 'don', 'recommend', 'medicine'), 
+custom_stop_words_cs <- bind_rows(tibble(word = c('bad', 'awful', 'horrible', 'terrible', 'taking', 'pill', 'effect', 'feeling', 'haven', 'medication', 'nicotine', 'quit', 'don', 'recommend', 'medicine', 'cold', 'doctor'), 
                                           lexicon = c("custom")), 
                                stop_words)
 
@@ -522,15 +563,17 @@ tidy_cs_reviews %>%
   anti_join(custom_stop_words_cs) %>% 
   inner_join(nrc_pos) %>%
   count(word) %>%
-  with(wordcloud(word, n, max.words = 75))
+  with(wordcloud(word, n, colors = color_pal, max.words = 75))
 
 tidy_cs_reviews %>%
   filter(rating == 1, drugName == 'Varenicline') %>%
   anti_join(custom_stop_words_cs) %>% 
   inner_join(nrc_neg) %>%
   count(word) %>%
-  with(wordcloud(word, n, max.words = 75))
+  with(wordcloud(word, n, colors = color_pal, max.words = 75))
 ```
+
+For positive ratings, many of the words indicate positive benefit, but also the word 'vivid' shows up, an interesting finding. For negative ratings, nausea is the number one hit, in addition to dizziness, lowered mood, and the word 'nightmare'.
 
 
 ```{r wl-word-freuency}
@@ -539,7 +582,7 @@ tidy_wl_reviews <- wl_reviews_edit %>%
   unnest_tokens(word, review)
 
 
-custom_stop_words_wl <- bind_rows(tibble(word = c('bad', 'awful', 'horrible', 'terrible', 'taking', 'pill', 'effect', 'feeling', 'medication', 'day', 'weight', 'lose', 'lost', 'nicotine', 'quit', 'haven', 'don', 'recommend', 'medicine'), 
+custom_stop_words_wl <- bind_rows(tibble(word = c('bad', 'awful', 'horrible', 'terrible', 'taking', 'pill', 'effect', 'feeling', 'medication', 'day', 'weight', 'lose', 'lost', 'nicotine', 'quit', 'haven', 'don', 'recommend', 'medicine', 'doctor'), 
                                           lexicon = c("custom")), 
                                stop_words)
 
@@ -549,16 +592,18 @@ tidy_wl_reviews %>%
   anti_join(custom_stop_words_wl) %>% 
   inner_join(sentiword) %>%
   count(word) %>%
-  with(wordcloud(word, n, max.words = 75))
+  with(wordcloud(word, n, colors = color_pal, max.words = 75))
 
 tidy_wl_reviews %>%
   filter(rating == 1, drugName == 'Phentermine') %>%
   anti_join(custom_stop_words_wl) %>% 
   inner_join(nrc_neg) %>%
   count(word) %>%
-  with(wordcloud(word, n, max.words = 75))
+  with(wordcloud(word, n, colors = color_pal, max.words = 75))
 
 ```
+
+For the positive ratings, many of the most frequent words indicate that reviewers are on an adjunctive diet.  For negative ratings, bad ratings mention headache, pain, dizziness, and continued hunger.
 
 # One final extension - Correlating Negative Sentiments with FDA Adverse Events
 
@@ -615,21 +660,24 @@ fda_exec()
 
 
 ade_oc_vis <- ade_oc %>%
-  mutate(pct_reviews = round((100*count/n_ade_oc),2)) %>% #Percent of all varenicline reports
+  mutate(pct_reviews = round((100*count/n_ade_oc),2)) %>% #Percent of all contraception reports
   arrange(desc(pct_reviews)) %>% #Highest frequency first
   head(10)
 
-ade_oc_vis
 
 ade_oc_vis %>%
   mutate(term = factor(term, levels = term)) %>%
   arrange(desc(pct_reviews)) %>%
 ggplot(aes(x = term, y = pct_reviews)) +
-  geom_bar(stat = "identity") +
+  geom_bar(stat = "identity", fill= "#042f66") +
   labs(title = "Frequency of ADE's associated with Birth Control Use, 2008 - 2017", x = "Reaction", y = "Percent of Total Reports") +
   coord_flip()
 
 ```
+
+The reported events indicate the most common reaction reported is 'device expulsion,' which in this context likely refers to intrauterine devices, or IUD's.  This would be a significant event and compromise the effectiveness of treatment. I think this is the most common report as it is serious and requires intervention of a medical professional to fix.  Coming in at number 8 is anxiety, which was mentioned as a symptom in the word frequency analysis. The number 10 result, injury, is likekly an error as I was unable to completely remove some queries associated with a common pain medication, ibuprofen.
+
+## Anxiety/ Depression Medications
 
 ```{r fda-ade-ax-dep}
 
@@ -643,7 +691,7 @@ fda_exec()
 n_ade_ad <- sum(ade_ad$count)
 
 ade_ad_vis <- ade_ad %>%
-  mutate(pct_reviews = round((100*count/n_ade_oc),2)) %>% #Percent of all varenicline reports
+  mutate(pct_reviews = round((100*count/n_ade_ad),2)) %>% #Percent of all antidepressant reports
   arrange(desc(pct_reviews)) %>% #Highest frequency first
   head(10)
 
@@ -653,14 +701,13 @@ ade_ad_vis %>%
   mutate(term = factor(term, levels = term)) %>%
   arrange(desc(pct_reviews)) %>%
 ggplot(aes(x = term, y = pct_reviews)) +
-  geom_bar(stat = "identity") +
+  geom_bar(stat = "identity", fill= "#042f66") +
   labs(title = "ADE's associated with Anxiety and Depression Treatment, 2008 - 2017", x = "Reaction", y = "Percent of Total Reports") +
   coord_flip()
 
 ```
 
-
-## Anxiety/ Depression Medications
+For medications used for managing anxiety and depression, the top two results are associated with worsening or ineffectiveness of therapy. Beyond that, nausea and dizziness came up in our original sentiment analysis as well.
 
 ## Weight Loss
 
@@ -673,10 +720,10 @@ ade_wl = fda_query("/drug/event.json") %>%
   fda_count("patient.reaction.reactionmeddrapt.exact") %>% #Reported reaction
   fda_exec()
 
-n_ade_wl <- sum(ade_wl$count) #Number of ADE's reported for varenicline
+n_ade_wl <- sum(ade_wl$count) #Number of ADE's reported for phentermine
 
 ade_wl_vis <- ade_wl %>%
-  mutate(pct_reviews = round((100*count/n_ade_cs),2)) %>% #Percent of all varenicline reports
+  mutate(pct_reviews = round((100*count/n_ade_wl),2)) %>% #Percent of all phentermine reports
   arrange(desc(pct_reviews)) %>% #Highest frequency first
 head(10)
   
@@ -684,11 +731,13 @@ ade_wl_vis %>%
   mutate(term = factor(term, levels = term)) %>%
   arrange(desc(pct_reviews)) %>%
 ggplot(aes(x = term, y = pct_reviews)) +
-  geom_bar(stat = "identity") +
+  geom_bar(stat = "identity", fill= "#042f66") +
   labs(title = "Frequency of ADE's associated with Phentermine Use, 2008 - 2017", x = "Reaction", y = "Percent of Total Reports") +
   coord_flip()
 
 ```
+
+It is worth pointing out that there are fewer reports for phentermine side effects than for other classes examined. This could because it remains a treatment that is given to otherwise healthy people looking for weight loss.  Two symptoms that stand out are pain and paraesthesia, which is feeling of skin burning and itching. Dizziness is also mentioned in the original sentiment analysis as well.
 
 ## Smoking Cessation
 
@@ -712,8 +761,20 @@ ade_cs_vis %>%
   mutate(term = factor(term, levels = term)) %>%
   arrange(desc(pct_reviews)) %>%
 ggplot(aes(x = term, y = pct_reviews)) +
-  geom_bar(stat = "identity") +
+  geom_bar(stat = "identity", fill= "#042f66") +
   labs(title = "Frequency of ADE's associated with Chantix Use, 2008 - 2017", x = "Reaction", y = "Percent of Total Reports") +
   coord_flip()
-
 ```
+
+Finally, for varenicline the most common side effects reported are nausea and depression. Interestingly, insomnia and abnormal dreams are also mentioned. Based on my own clinical knowledge, this is an interesting finding in addition to the sentiment analysis identifying 'vivid' as a word because one idiosyncratic reaction associated with varenicline is nightmares or vivid dreaming. This may be related to its treatment effect on nicotinic acid receptors.  It has a much longer half-life than nicotine, 24 hours versus 1-2 hours, so in all likelihood patients are receving constant stimulation even while sleeping.
+
+# Conclusions
+
+Patient-generated user reviews provide a complementary perspective of the tolerability of medication therapy. The medications reviewed were not surprising and ecompass many of the most popular medications used for each condition. Analysis of reviews over time show a large spike betewen 2014 and 2016. Using internet reviews in combination with sentiment analysis, many of the most common side effects were correlated with adverse drug events reported to the FDA.  There were some differences between reports, as the FDA tended to have more serious and treatment-modifying effects, while user reviews tended to accentuate the mental health impacts of starting a new therapy. 
+
+
+# Limitations and Future Directions
+
+Some limitations I identified early in the beginning of the project is the popularity of birth control as a drug review, which indicates that the reviews are biased towards younger women.  On the one hand, these patients are more likely to be on one or two medications, while older patients tend to be on up to four if they are being treated for chronic diseases. This means that the side effects are likely to be from the single medication and not a complex interaction between the medications. However, I would not generalize any of the findings to older populations as has an important impact on drug therapy. Further to this point, younger reviewers are also likely healthier, and it's not clear whether birth control for instance is exacerbating an existing mood disorder, or a _de novo_ finding.
+
+For future directions, the openFDA API has much more operability than what I utilized, including the consideration of multiple medications and conditions, demographic information, and severity of the reaction (death, hospitalization, discontinuation of therapy).  The reviews data could be made much more tidy and my treatment here reflects a minimal exercise to make the data intelligible.  Additionally, there was some operability not used from the reviews, including the all-important 'Users found this helpful', which is a ubiquitous finding in the Web 2.0 environment of user feedback.  Finally, these dataframes are ripe for treatment in a relational database, especially if I were able to find an existing table with all synonyms for a medication (brand, generic, nicknames, identifiers for billing and commerical purposes). These already exist in regulatory and clinical records, and their implementation would diminish the need for recoding of the thousands of names of FDA-approved drugs. 
