@@ -671,6 +671,7 @@ ade_oc_vis %>%
 ggplot(aes(x = term, y = pct_reviews)) +
   geom_bar(stat = "identity", fill= "#042f66") +
   labs(title = "Frequency of ADE's associated with Birth Control Use, 2008 - 2017", x = "Reaction", y = "Percent of Total Reports") +
+  theme(plot.title = element_text(hjust = 1)) +
   coord_flip()
 
 ```
@@ -703,6 +704,7 @@ ade_ad_vis %>%
 ggplot(aes(x = term, y = pct_reviews)) +
   geom_bar(stat = "identity", fill= "#042f66") +
   labs(title = "ADE's associated with Anxiety and Depression Treatment, 2008 - 2017", x = "Reaction", y = "Percent of Total Reports") +
+  theme(plot.title = element_text(hjust = 1)) +
   coord_flip()
 
 ```
@@ -733,6 +735,7 @@ ade_wl_vis %>%
 ggplot(aes(x = term, y = pct_reviews)) +
   geom_bar(stat = "identity", fill= "#042f66") +
   labs(title = "Frequency of ADE's associated with Phentermine Use, 2008 - 2017", x = "Reaction", y = "Percent of Total Reports") +
+  theme(plot.title = element_text(hjust = 1)) +
   coord_flip()
 
 ```
